@@ -11,8 +11,8 @@ g++ main.cpp -o main
 
 ## Roadmap
 
-1. Single neuron ✅
-2. Layer of neurons ✅
+1. Single neuron
+2. Layer of neurons
 3. Chain multiple layers into a full forward pass
 4. Random weight initialization
 5. Loss function
