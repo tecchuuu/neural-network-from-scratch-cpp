@@ -18,4 +18,4 @@ g++ main.cpp -o main
 5. Loss function
 6. Backpropagation
 7. Gradient descent + training loop
-8. Train on a real dataset
+8. Train on a dataset (XOR)
