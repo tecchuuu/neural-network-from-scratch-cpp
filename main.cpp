@@ -18,79 +18,89 @@ std::random_device rd;
 std::mt19937 gen(rd());
 std::uniform_real_distribution<double> dist(-1.0, 1.0);
 enum activation {RELU, SIGMOID};
-LayerResult layerNeuron(const std::vector<Neuron>& n, const std::vector<double>& x, activation);
+LayerResult computeLayer(const std::vector<Neuron>& neurons, const std::vector<double>& input, activation);
 double rectifiedLinearUnit(double x1);
 double sigmoid(double x1);
 std::vector<Neuron> makeLayer(int numNeurons, int numInputPerNeuron);
 double meanSquaredError(const std::vector<double>& output, const std::vector<double>& target);
-double weightGradient(double output, double target, double weighted_x, double x, activation act);
-double biasGradient(double output, double target, double weighted_x, activation act);
+double weightGradient(double delta, double x);
+double outputDeltaSigmoid(double output, double target);
+double outputDeltaRelu(double output, double target, double weighted_x);
+std::vector<double> hiddenDelta(const std::vector<double>& nextLayerDelta, const std::vector<Neuron>& nextLayerNeurons, const LayerResult& previousLayerResult, activation act);
 
 int main() {
-    std::vector<double> input = {-6, 10, -10};
-    std::vector<Neuron> hiddenLayer = makeLayer(5, 3);
-    std::vector<double> target = {2, 3};
+    std::vector<std::vector<double>> inputs = {{0,0},{0,1},{1,0},{1,1}};
+    std::vector<std::vector<double>> targets = {{0},{1},{1},{0}};
 
-    for (size_t i = 0; i < hiddenLayer.size(); i++) {
-        std::cout << "{" << hiddenLayer[i].bias << " ,{";
-        for (size_t j = 0; j < hiddenLayer[i].weights.size(); j++) {
-            std::cout << hiddenLayer[i].weights[j];
-            if (j + 1 < hiddenLayer[i].weights.size()) std::cout << ", ";
-        }
-        std::cout << "}}" << std::endl;
-    }
-    std::cout << "\n" << std::endl;
+    std::vector<Neuron> hiddenLayer = makeLayer(4, 2);
+    std::vector<Neuron> hiddenLayer2 = makeLayer(1, 4);
 
-    LayerResult hiddenLayerOutput = layerNeuron(hiddenLayer, input, SIGMOID);
+    double learningRate = 0.5;
 
-    for (size_t i = 0; i < hiddenLayerOutput.preActivationWeightedX.size(); i++) {
-        std::cout << "pre: " << hiddenLayerOutput.preActivationWeightedX[i] << ", post: "
-            << hiddenLayerOutput.postActivationWeightedX[i] << std::endl;
-    }
-    std::cout << "\n" << std::endl;
+    for (int epoch = 0; epoch < 3001; epoch++) {
+        double epochLoss = 0;
 
-    std::vector<Neuron> hiddenLayer2 = makeLayer(2, 5);
+        for (size_t s = 0; s < inputs.size(); s++) {
+            const std::vector<double>& input = inputs[s];
+            const std::vector<double>& target = targets[s];
 
-    LayerResult hiddenLayer2Output = layerNeuron(hiddenLayer2, hiddenLayerOutput.postActivationWeightedX, RELU);
+            LayerResult hiddenLayerOutput = computeLayer(hiddenLayer, input, SIGMOID);
+            LayerResult hiddenLayer2Output = computeLayer(hiddenLayer2, hiddenLayerOutput.postActivationWeightedX, SIGMOID);
 
-    for (size_t i = 0; i < hiddenLayer2Output.preActivationWeightedX.size(); i++) {
-        std::cout << "pre2: " << hiddenLayer2Output.preActivationWeightedX[i] << ", post2: "
-            << hiddenLayer2Output.postActivationWeightedX[i] << std::endl;
-    }
+            epochLoss += meanSquaredError(hiddenLayer2Output.postActivationWeightedX, target);
 
-    std::cout << "\nmean squared error : " << meanSquaredError(hiddenLayer2Output.postActivationWeightedX, target) << "\n" << std::endl;
-
-    for (int i = 0; i < 3; i++) {
-        size_t neuronSize = hiddenLayer2.size();
-        size_t weightSize = hiddenLayer2[0].weights.size();
-        double learningRate = 0.01;
-
-        for (size_t j = 0; j < neuronSize; j++) {
-            hiddenLayer2[j].bias -= learningRate * biasGradient(hiddenLayer2Output.postActivationWeightedX[j], target[j], hiddenLayer2Output.preActivationWeightedX[j], SIGMOID);
-            for (size_t k = 0; k < weightSize; k++) {
-                hiddenLayer2[j].weights[k] -= learningRate * weightGradient(hiddenLayer2Output.postActivationWeightedX[j], target[j], hiddenLayer2Output.preActivationWeightedX[j], hiddenLayerOutput.postActivationWeightedX[k], SIGMOID);
-                std::cout << "hiddenLayerWeights " << hiddenLayer2[j].weights[k] << std::endl;
+            // backpropagation
+            std::vector<double> deltaHiddenLayer2;
+            for (size_t i = 0; i < hiddenLayer2.size(); i++) {
+                deltaHiddenLayer2.push_back(outputDeltaSigmoid(hiddenLayer2Output.postActivationWeightedX[i], target[i]));
             }
-            std::cout << "hiddenLayerBias " << hiddenLayer2[j].bias  << "\n" << std::endl;
+
+            std::vector<double> deltaHiddenLayer = hiddenDelta(deltaHiddenLayer2, hiddenLayer2, hiddenLayerOutput, SIGMOID);
+
+            // update weights hiddenLayer
+            for (size_t i = 0; i < hiddenLayer.size(); i++) {
+                for (size_t j = 0; j < hiddenLayer[i].weights.size(); j++) {
+                    hiddenLayer[i].weights[j] -= learningRate * (deltaHiddenLayer[i] * input[j]);
+                }
+                hiddenLayer[i].bias -= learningRate * deltaHiddenLayer[i];
+            }
+
+            // update weights hiddenLayer2
+            for (size_t i = 0; i < hiddenLayer2.size(); i++) {
+                for (size_t j = 0; j < hiddenLayer2[i].weights.size(); j++) {
+                    hiddenLayer2[i].weights[j] -= learningRate * (deltaHiddenLayer2[i] * hiddenLayerOutput.postActivationWeightedX[j]);
+                }
+                hiddenLayer2[i].bias -= learningRate * deltaHiddenLayer2[i];
+            }
         }
-        hiddenLayer2Output = layerNeuron(hiddenLayer2, hiddenLayerOutput.postActivationWeightedX, SIGMOID);
-        std::cout << "mean squared error : " << meanSquaredError(hiddenLayer2Output.postActivationWeightedX, target) << "\n" << std::endl;
+
+        if (epoch % 500 == 0) {
+            std::cout << "epoch " << epoch << " : " << epochLoss / inputs.size() << std::endl;
+        }
+    }
+
+    std::cout << "\nFinal predictions:" << std::endl;
+    for (size_t s = 0; s < inputs.size(); s++) {
+        LayerResult hiddenLayerOutput = computeLayer(hiddenLayer, inputs[s], SIGMOID);
+        LayerResult hiddenLayer2Output = computeLayer(hiddenLayer2, hiddenLayerOutput.postActivationWeightedX, SIGMOID);
+        std::cout << inputs[s][0] << " XOR " << inputs[s][1] << " = "
+            << hiddenLayer2Output.postActivationWeightedX[0] << " (target " << targets[s][0] << ")" << std::endl;
     }
 
     return 0;
 }
 
-LayerResult layerNeuron(const std::vector<Neuron>& n, const std::vector<double>& x, activation act) {
+LayerResult computeLayer(const std::vector<Neuron>& neurons, const std::vector<double>& input, activation act) {
     LayerResult layerResult;
-    size_t numInputs = x.size();
-    size_t numNeurons = n.size();
+    size_t numInputs = input.size();
+    size_t numNeurons = neurons.size();
     for (size_t i = 0; i < numNeurons; i++) {
-        assert(x.size() == n[i].weights.size());
+        assert(input.size() == neurons[i].weights.size());
         double preActivationWeightedX;
         double postActivationWeightedX;
-        preActivationWeightedX = n[i].bias;
+        preActivationWeightedX = neurons[i].bias;
         for (size_t j = 0; j < numInputs; j++) {
-            preActivationWeightedX += x.at(j) * n[i].weights[j];   
+            preActivationWeightedX += input.at(j) * neurons[i].weights[j];   
         }
         layerResult.preActivationWeightedX.push_back(preActivationWeightedX);
         switch (act) {
@@ -108,7 +118,7 @@ LayerResult layerNeuron(const std::vector<Neuron>& n, const std::vector<double>&
 }
 
 double rectifiedLinearUnit(double x1) {
-    if (x1 < 0) {return 0;} return x1;
+    return (x1 < 0) ? 0: x1;
 }
 
 double sigmoid(double x1) {
@@ -142,20 +152,43 @@ double meanSquaredError(const std::vector<double>& output, const std::vector<dou
     return MSE / output.size();
 }
 
-double weightGradient(double output, double target, double weighted_x, double x, activation act) {
-    switch (act) {
-        case SIGMOID:
-            return 2 * (output - target) * (output * (1 - output)) * x;
-        case RELU:
-            if (weighted_x <= 0) {
-                return  0;
-            } else { 
-                return 2 * x * (output - target);
-            }
-        default: return 0;
+double weightGradient(double delta, double x) {
+    return delta * x;
+}
+
+double outputDeltaSigmoid(double output, double target) {
+    return (2 * (output - target)) * (output * (1 - output));
+}
+
+double outputDeltaRelu(double output, double target, double weighted_x) {
+    if (weighted_x <= 0) {
+        return  0;
+    } else { 
+        return (2 * (output - target));
     }
 }
 
-double biasGradient(double output, double target, double weighted_x, activation act) {
-    return weightGradient(output, target, weighted_x, 1, act);
+std::vector<double> hiddenDelta(const std::vector<double>& nextLayerDelta, const std::vector<Neuron>& nextLayerNeurons, const LayerResult& previousLayerResult, activation act) {
+    size_t numOfNextLayerNeurons = nextLayerNeurons.size();
+    size_t numOfThisLayerNeurons = previousLayerResult.preActivationWeightedX.size();
+    std::vector<double> hiddenLayerDelta;
+
+    for (size_t i = 0; i < numOfThisLayerNeurons; i++) {
+        double delta = 0;
+        for (size_t j = 0; j < numOfNextLayerNeurons; j++) {
+            delta += nextLayerDelta[j] * nextLayerNeurons[j].weights[i];
+        }
+        switch (act) {
+            case SIGMOID:
+                delta *= previousLayerResult.postActivationWeightedX[i] * (1 - previousLayerResult.postActivationWeightedX[i]);
+                break;
+            case RELU:
+                if (previousLayerResult.preActivationWeightedX[i] < 0) {
+                    delta *= 0;
+                }
+                break;
+        }
+        hiddenLayerDelta.push_back(delta);
+    }
+    return hiddenLayerDelta;
 }
